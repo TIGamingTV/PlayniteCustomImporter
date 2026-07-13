@@ -7,10 +7,95 @@
         Title="Import Game"
         Height="480" Width="640"
         WindowStartupLocation="CenterOwner"
-        MinHeight="380" MinWidth="480">
+        MinHeight="380" MinWidth="480"
+        Background="#1E1E1E"
+        Foreground="#E6E6E6"
+        FontSize="13">
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVis" />
+
+        <!-- Dark text field -->
+        <Style TargetType="TextBox">
+            <Setter Property="Background" Value="#2D2D30" />
+            <Setter Property="Foreground" Value="#E6E6E6" />
+            <Setter Property="CaretBrush" Value="#E6E6E6" />
+            <Setter Property="BorderBrush" Value="#555555" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="6,4" />
+        </Style>
+
+        <!-- Dark list -->
+        <Style TargetType="ListBox">
+            <Setter Property="Background" Value="#252526" />
+            <Setter Property="Foreground" Value="#E6E6E6" />
+            <Setter Property="BorderBrush" Value="#3F3F46" />
+            <Setter Property="BorderThickness" Value="1" />
+        </Style>
+        <Style TargetType="ListBoxItem">
+            <Setter Property="Foreground" Value="#E6E6E6" />
+            <Setter Property="Padding" Value="6,4" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Border x:Name="itemBorder"
+                                Background="Transparent"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="itemBorder" Property="Background" Value="#333337" />
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="itemBorder" Property="Background" Value="#094771" />
+                                <Setter Property="Foreground" Value="#FFFFFF" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Base button: custom template so Background actually applies -->
+        <Style x:Key="DarkButton" TargetType="Button">
+            <Setter Property="Foreground" Value="#F2F2F2" />
+            <Setter Property="Background" Value="#3D3D3D" />
+            <Setter Property="BorderBrush" Value="#6E6E6E" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="12,6" />
+            <Setter Property="MinWidth" Value="80" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="SnapsToDevicePixels" Value="True" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="border"
+                                CornerRadius="4"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"
+                                              Margin="{TemplateBinding Padding}" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="#7A7A7A" />
+                                <Setter TargetName="border" Property="BorderBrush" Value="#9A9A9A" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="border" Property="Background" Value="#2A2A2A" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.4" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Window.Resources>
+
     <Grid Margin="16">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -49,15 +134,17 @@
                            TextWrapping="Wrap"
                            Margin="0,0,0,12" />
                 <Button Content="Import..."
+                        Style="{StaticResource DarkButton}"
+                        Background="#5E5E5E"
                         HorizontalAlignment="Left"
-                        Padding="20,6"
+                        Padding="24,8"
                         Command="{Binding ImportCommand}" />
                 <TextBlock Text="Selected folder:"
                            FontWeight="Bold"
                            Margin="0,16,0,4" />
                 <TextBlock Text="{Binding SelectedSourceFolder}"
                            TextWrapping="Wrap"
-                           Opacity="0.8" />
+                           Foreground="#B8B8B8" />
             </StackPanel>
 
             <!-- Step 2: choose storage -->
@@ -68,9 +155,8 @@
                            Margin="0,0,0,8" />
                 <TextBlock DockPanel.Dock="Bottom"
                            Margin="0,8,0,0"
-                           Opacity="0.7"
+                           Foreground="#9A9A9A"
                            TextWrapping="Wrap"
-                           Visibility="{Binding IsChooseStorageStep, Converter={StaticResource BoolToVis}}"
                            Text="{Binding SelectedSourceFolder, StringFormat=Folder to move: {0}}" />
                 <ListBox ItemsSource="{Binding StorageLocations}"
                          SelectedItem="{Binding SelectedStorage}"
@@ -85,6 +171,8 @@
                            Margin="0,0,0,8" />
                 <Button DockPanel.Dock="Bottom"
                         Content="Browse for another .exe..."
+                        Style="{StaticResource DarkButton}"
+                        Background="#474747"
                         HorizontalAlignment="Left"
                         Margin="0,8,0,0"
                         Command="{Binding BrowseExeCommand}" />
@@ -98,20 +186,25 @@
         <DockPanel Grid.Row="2" Margin="0,16,0,0">
             <Button DockPanel.Dock="Left"
                     Content="Back"
-                    MinWidth="80"
+                    Style="{StaticResource DarkButton}"
+                    Background="#333333"
                     Command="{Binding BackCommand}"
                     Visibility="{Binding IsChooseStorageStep, Converter={StaticResource BoolToVis}}" />
             <StackPanel Orientation="Horizontal"
                         HorizontalAlignment="Right">
                 <Button Content="Cancel"
-                        MinWidth="80"
+                        Style="{StaticResource DarkButton}"
+                        Background="#3D3D3D"
                         Margin="0,0,8,0"
                         Command="{Binding CancelCommand}" />
                 <Button Content="Next"
-                        MinWidth="80"
+                        Style="{StaticResource DarkButton}"
+                        Background="#545454"
                         Command="{Binding MoveAndNextCommand}"
                         Visibility="{Binding IsChooseStorageStep, Converter={StaticResource BoolToVis}}" />
                 <Button Content="Add to Playnite"
+                        Style="{StaticResource DarkButton}"
+                        Background="#6A6A6A"
                         MinWidth="120"
                         Command="{Binding AddGameCommand}"
                         Visibility="{Binding IsPickExecutableStep, Converter={StaticResource BoolToVis}}" />
