@@ -64,10 +64,22 @@ namespace PlayniteCustomImporter.Import
             var folderName = new DirectoryInfo(sourceFolder.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)).Name;
             var destination = Path.Combine(storageRoot, folderName);
 
-            if (string.Equals(Path.GetFullPath(sourceFolder), Path.GetFullPath(destination), StringComparison.OrdinalIgnoreCase))
+            var sourceFull = Path.GetFullPath(sourceFolder);
+            var destinationFull = Path.GetFullPath(destination);
+
+            if (string.Equals(sourceFull, destinationFull, StringComparison.OrdinalIgnoreCase))
             {
                 // Already in place; nothing to move.
                 return destination;
+            }
+
+            // Reject moving a folder into itself. If the storage location lives inside the source
+            // folder, Directory.Move throws and the copy fallback below would recurse into the
+            // destination as it grows, filling the disk. Fail fast with a clear message instead.
+            if (IsSameOrSubPath(sourceFull, destinationFull))
+            {
+                throw new IOException(
+                    "The selected storage location is inside the folder being imported. Choose a storage location outside the game folder.");
             }
 
             if (Directory.Exists(destination) || File.Exists(destination))
@@ -83,7 +95,20 @@ namespace PlayniteCustomImporter.Import
             {
                 // Directory.Move fails across volumes; fall back to a recursive copy then delete.
                 logger.Warn(ex, "Directory.Move failed, falling back to copy+delete.");
-                CopyDirectory(sourceFolder, destination);
+                try
+                {
+                    CopyDirectory(sourceFolder, destination);
+                }
+                catch
+                {
+                    // The copy failed part way through. Remove the partial destination so the
+                    // source stays the single copy of the data and a retry is not blocked by a
+                    // half-written folder. The source is left untouched (it is only deleted after
+                    // a fully successful copy below).
+                    TryDeleteDirectory(destination);
+                    throw;
+                }
+
                 Directory.Delete(sourceFolder, true);
             }
 
@@ -142,6 +167,39 @@ namespace PlayniteCustomImporter.Import
             }
 
             return exeName;
+        }
+
+        /// <summary>
+        /// True when <paramref name="candidate"/> is the same directory as, or a descendant of,
+        /// <paramref name="root"/>. Both are expected to be absolute paths.
+        /// </summary>
+        private static bool IsSameOrSubPath(string root, string candidate)
+        {
+            var rootWithSeparator = AppendDirectorySeparator(root);
+            var candidateWithSeparator = AppendDirectorySeparator(candidate);
+            return candidateWithSeparator.StartsWith(rootWithSeparator, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string AppendDirectorySeparator(string path)
+        {
+            return path.EndsWith(Path.DirectorySeparatorChar.ToString(), StringComparison.Ordinal)
+                ? path
+                : path + Path.DirectorySeparatorChar;
+        }
+
+        private static void TryDeleteDirectory(string path)
+        {
+            try
+            {
+                if (Directory.Exists(path))
+                {
+                    Directory.Delete(path, true);
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.Warn(ex, $"Failed to clean up partial copy at {path}.");
+            }
         }
 
         private static void CopyDirectory(string source, string destination)
