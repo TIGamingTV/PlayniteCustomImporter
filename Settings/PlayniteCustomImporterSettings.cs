@@ -4,7 +4,6 @@ using System.ComponentModel;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using Playnite.SDK;
-using PlayniteCustomImporter.Import;
 
 namespace PlayniteCustomImporter.Settings
 {

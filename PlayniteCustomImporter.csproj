@@ -57,7 +57,6 @@
       <DependentUpon>PlayniteCustomImporterSettingsView.xaml</DependentUpon>
     </Compile>
     <Compile Include="Import\GameImporter.cs" />
-    <Compile Include="Import\RelayCommand.cs" />
     <Compile Include="Import\ImportWizardViewModel.cs" />
     <Compile Include="Import\ImportWizardWindow.xaml.cs">
       <DependentUpon>ImportWizardWindow.xaml</DependentUpon>
