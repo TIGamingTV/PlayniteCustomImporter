@@ -1,1 +1,1 @@
-# PlayniteCustomImporter-
+# PlayniteCustomImporter
