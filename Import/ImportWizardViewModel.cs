@@ -131,8 +131,17 @@ namespace PlayniteCustomImporter.Import
                 {
                     SelectedSourceFolder = dialog.SelectedPath;
                     StatusMessage = string.Empty;
+                    RefreshStorageFreeSpace();
                     CurrentStep = WizardStep.ChooseStorage;
                 }
+            }
+        }
+
+        private void RefreshStorageFreeSpace()
+        {
+            foreach (var location in StorageLocations)
+            {
+                location.RefreshFreeSpace();
             }
         }
 
