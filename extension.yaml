@@ -1,0 +1,7 @@
+Id: PlayniteCustomImporter_b7e2f4a9-3c1d-4e8a-9f26-5d0c7a1b8e34
+Name: Custom Importer
+Author: TIGamingTV
+Version: 1.0
+Module: PlayniteCustomImporter.dll
+Type: GenericPlugin
+Icon: icon.png
