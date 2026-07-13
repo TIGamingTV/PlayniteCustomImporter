@@ -1,0 +1,40 @@
+name: Build
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Setup NuGet
+        uses: NuGet/setup-nuget@v2
+
+      - name: Restore NuGet packages
+        run: nuget restore PlayniteCustomImporter.sln
+
+      - name: Build (Release)
+        run: msbuild PlayniteCustomImporter.sln /p:Configuration=Release /p:Platform="Any CPU"
+
+      - name: Stage extension output
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Copy-Item bin/Release/PlayniteCustomImporter.dll dist/
+          Copy-Item extension.yaml dist/
+          Copy-Item icon.png dist/
+
+      - name: Upload extension artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PlayniteCustomImporter
+          path: dist/
