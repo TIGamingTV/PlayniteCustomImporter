@@ -41,10 +41,19 @@ nuget restore PlayniteCustomImporter.sln
 msbuild PlayniteCustomImporter.sln /p:Configuration=Release /p:Platform="Any CPU"
 ```
 
-CI (`.github/workflows/build.yml`) performs the same restore + build on `windows-latest` and
-uploads the built extension as an artifact.
+CI (`.github/workflows/build.yml`) performs the same restore + build on `windows-latest`,
+packages an installable `PlayniteCustomImporter.pext`, and uploads it as an artifact. Pushing a
+version tag (e.g. `v1.0`) additionally publishes a GitHub Release with the `.pext` attached.
 
 ## Installing into Playnite
+
+### From the packaged `.pext` (recommended)
+
+Download `PlayniteCustomImporter.pext` from the latest [Release](../../releases) (or from a build's
+Actions artifact), then open it in Playnite (double-click, or drag it onto the Playnite window) and
+confirm the install prompt. Restart Playnite when asked.
+
+### Manual copy (fallback)
 
 Copy the build output into a new folder under Playnite's extensions directory:
 
