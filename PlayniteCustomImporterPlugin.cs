@@ -69,21 +69,6 @@ namespace PlayniteCustomImporter
                 viewModel.CloseRequested += (_, __) => window.Close();
                 window.Owner = System.Windows.Application.Current?.MainWindow;
                 window.ShowDialog();
-
-                // Opened after the wizard closes so Playnite's editor is a top-level modal rather than
-                // nested inside our (closing) dialog. This is the closest the SDK offers to Playnite's
-                // automatic metadata download — the editor's "Download Metadata" is one click away.
-                if (viewModel.ImportedGame != null && settingsViewModel.Settings.OpenMetadataAfterImport)
-                {
-                    try
-                    {
-                        PlayniteApi.MainView.OpenEditDialog(viewModel.ImportedGame.Id);
-                    }
-                    catch (Exception ex)
-                    {
-                        logger.Error(ex, "Failed to open the game editor after import.");
-                    }
-                }
             }
             catch (Exception ex)
             {
