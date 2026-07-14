@@ -96,7 +96,8 @@
         </Style>
     </Window.Resources>
 
-    <Grid Margin="16">
+    <Grid>
+      <Grid Margin="16">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
@@ -265,5 +266,59 @@
                         Visibility="{Binding IsChooseStorageStep, Converter={StaticResource BoolToVis}}" />
             </StackPanel>
         </DockPanel>
+      </Grid>
+
+        <!-- Import progress overlay: covers the wizard and blocks input while the game folder is being
+             moved, so the window stays responsive instead of showing "not responding". -->
+        <Grid Background="#CC1E1E1E"
+              Visibility="{Binding IsImporting, Converter={StaticResource BoolToVis}}">
+            <Border VerticalAlignment="Center"
+                    HorizontalAlignment="Center"
+                    Background="#252526"
+                    BorderBrush="#3F3F46"
+                    BorderThickness="1"
+                    CornerRadius="6"
+                    Padding="24"
+                    MinWidth="360">
+                <StackPanel>
+                    <TextBlock Text="Importing game"
+                               FontSize="16"
+                               FontWeight="Bold"
+                               Margin="0,0,0,12" />
+                    <TextBlock Text="{Binding ImportStatus}"
+                               TextWrapping="Wrap"
+                               Foreground="#C8C8C8"
+                               Margin="0,0,0,10" />
+                    <ProgressBar Height="18"
+                                 Minimum="0"
+                                 Maximum="100"
+                                 Value="{Binding ImportPercent}"
+                                 IsIndeterminate="{Binding ImportIsIndeterminate}"
+                                 Background="#2D2D30"
+                                 Foreground="#0E7AC4"
+                                 BorderBrush="#3F3F46"
+                                 BorderThickness="1" />
+                    <TextBlock Margin="0,8,0,0"
+                               HorizontalAlignment="Right"
+                               Foreground="#9A9A9A"
+                               Text="{Binding ImportPercent, StringFormat={}{0:0}%}">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Visibility" Value="Visible" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding ImportIsIndeterminate}" Value="True">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                    <TextBlock Text="Please don't close this window."
+                               Foreground="#7A7A7A"
+                               FontSize="11"
+                               Margin="0,10,0,0" />
+                </StackPanel>
+            </Border>
+        </Grid>
     </Grid>
 </Window>
