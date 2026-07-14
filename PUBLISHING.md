@@ -53,7 +53,7 @@ git push origin v1.1
 On a `v*` tag the workflow:
 
 - stamps `extension.yaml`'s `Version` from the tag,
-- stamps `installer.yaml`'s `Version`, `ReleaseDate`, and `PackageUrl` to match the tag,
+- stamps `installer.yaml`'s `Version`, `ReleaseDate`, `PackageUrl`, and `Changelog` to match the tag,
 - builds, packages `PlayniteCustomImporter.pext`, and
 - publishes a GitHub Release with **both** `PlayniteCustomImporter.pext` and `installer.yaml` attached.
 
@@ -61,4 +61,6 @@ Because `InstallerManifestUrl` uses the `releases/latest/download/` path, Playni
 version automatically — no further change to the add-on database is required.
 
 > The `installer.yaml` committed in the repo is the source of truth for its shape; CI rewrites its
-> version fields at release time. If you add fields (e.g. a changelog), edit the committed file.
+> `Version`, `ReleaseDate`, `PackageUrl`, and `Changelog` at release time. The auto-stamped changelog
+> is a single generic line pointing at the release notes — for a hand-written changelog, edit the
+> committed file's `Changelog:` list (and drop the CI changelog stamp) instead.

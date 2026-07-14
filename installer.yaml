@@ -4,3 +4,5 @@ Packages:
       RequiredApiVersion: 6.16.0
       ReleaseDate: 2026-07-14
       PackageUrl: https://github.com/TIGamingTV/PlayniteCustomImporter/releases/download/v1.0/PlayniteCustomImporter.pext
+      Changelog:
+          - Initial release.

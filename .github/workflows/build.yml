@@ -37,10 +37,13 @@ jobs:
           # InstallerManifestUrl) in sync with the release being published.
           $date = Get-Date -Format 'yyyy-MM-dd'
           $url  = "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/PlayniteCustomImporter.pext"
+          $notes = "https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }}"
           $installer = Get-Content installer.yaml
           $installer = $installer -replace '^(\s*- Version:).*', "`$1 $version"
           $installer = $installer -replace '^(\s*ReleaseDate:).*', "`$1 $date"
           $installer = $installer -replace '^(\s*PackageUrl:).*', "`$1 $url"
+          # Changelog list item (deeper-indented '- ' with no 'Key:' after it).
+          $installer = $installer -replace '^(\s{10}- ).*', "`$1Release $version. See $notes"
           $installer | Set-Content installer.yaml
           Write-Host "Stamped installer.yaml to $version ($date) -> $url"
 
