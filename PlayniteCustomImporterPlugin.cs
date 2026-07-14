@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
-using System.Reflection;
+using System.Windows;
 using System.Windows.Controls;
 using Playnite.SDK;
 using Playnite.SDK.Plugins;
@@ -15,7 +14,6 @@ namespace PlayniteCustomImporter
         private static readonly ILogger logger = LogManager.GetLogger();
 
         private readonly PlayniteCustomImporterSettingsViewModel settingsViewModel;
-        private readonly string iconPath;
 
         public override Guid Id { get; } = Guid.Parse("b7e2f4a9-3c1d-4e8a-9f26-5d0c7a1b8e34");
 
@@ -23,9 +21,6 @@ namespace PlayniteCustomImporter
         {
             settingsViewModel = new PlayniteCustomImporterSettingsViewModel(this, api);
             Properties = new GenericPluginProperties { HasSettings = true };
-
-            var assemblyDir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
-            iconPath = Path.Combine(assemblyDir ?? string.Empty, "icon.png");
         }
 
         public override ISettings GetSettings(bool firstRunSettings)
@@ -44,8 +39,24 @@ namespace PlayniteCustomImporter
             {
                 Title = "Import Game",
                 Type = SiderbarItemType.Button,
-                Icon = iconPath,
+                Icon = BuildPlusIcon(),
                 Activated = OpenImportWindow
+            };
+        }
+
+        /// <summary>
+        /// Builds the sidebar icon as a plus (+) glyph. A fresh <see cref="TextBlock"/> is returned on
+        /// each call because a WPF element cannot be shared between visual trees.
+        /// </summary>
+        private static TextBlock BuildPlusIcon()
+        {
+            return new TextBlock
+            {
+                Text = "+",
+                FontSize = 22,
+                FontWeight = FontWeights.Bold,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center
             };
         }
 

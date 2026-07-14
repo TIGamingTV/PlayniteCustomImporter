@@ -31,6 +31,22 @@ namespace PlayniteCustomImporter.Import
         }
     }
 
+    /// <summary>
+    /// A candidate game folder shown in step 1, exposing its folder name for display while keeping the
+    /// full path.
+    /// </summary>
+    public class SourceFolderItem
+    {
+        public string FullPath { get; }
+        public string Name => System.IO.Path.GetFileName(FullPath.TrimEnd(
+            System.IO.Path.DirectorySeparatorChar, System.IO.Path.AltDirectorySeparatorChar));
+
+        public SourceFolderItem(string fullPath)
+        {
+            FullPath = fullPath;
+        }
+    }
+
     public class ImportWizardViewModel : INotifyPropertyChanged
     {
         private readonly IPlayniteAPI api;
@@ -38,11 +54,14 @@ namespace PlayniteCustomImporter.Import
         private readonly GameImporter importer;
 
         private WizardStep currentStep = WizardStep.SelectSource;
+        private string sourceRoot = string.Empty;
         private string selectedSourceFolder = string.Empty;
+        private SourceFolderItem selectedSourceFolderItem;
         private StorageLocation selectedStorage;
         private string movedFolder = string.Empty;
         private ExecutableItem selectedExecutable;
         private string statusMessage = string.Empty;
+        private string sourceStatusMessage = string.Empty;
 
         public ImportWizardViewModel(IPlayniteAPI api, PlayniteCustomImporterSettings settings)
         {
@@ -52,20 +71,29 @@ namespace PlayniteCustomImporter.Import
 
             StorageLocations = settings.StorageLocations;
             FoundExecutables = new ObservableCollection<ExecutableItem>();
-            selectedSourceFolder = settings.SourceFolder ?? string.Empty;
+            SourceFolders = new ObservableCollection<SourceFolderItem>();
 
-            ImportCommand = new RelayCommand<object>(_ => Import());
+            // Start from the configured source folder if one is set, otherwise the user's Downloads
+            // folder. A manual selector lets the user point elsewhere.
+            sourceRoot = ResolveInitialSourceRoot();
+
+            NextFromSourceCommand = new RelayCommand<object>(_ => NextFromSource(), _ => CanNextFromSource());
+            ChangeSourceRootCommand = new RelayCommand<object>(_ => ChangeSourceRoot());
             MoveAndNextCommand = new RelayCommand<object>(_ => MoveAndNext(), _ => CanMoveAndNext());
             BackCommand = new RelayCommand<object>(_ => CurrentStep = WizardStep.SelectSource, _ => CurrentStep == WizardStep.ChooseStorage);
             BrowseExeCommand = new RelayCommand<object>(_ => BrowseExe());
             AddGameCommand = new RelayCommand<object>(_ => AddGame(), _ => SelectedExecutable != null);
             CancelCommand = new RelayCommand<object>(_ => OnCloseRequested());
+
+            ScanSourceFolders();
         }
 
         public ObservableCollection<StorageLocation> StorageLocations { get; }
         public ObservableCollection<ExecutableItem> FoundExecutables { get; }
+        public ObservableCollection<SourceFolderItem> SourceFolders { get; }
 
-        public RelayCommand<object> ImportCommand { get; }
+        public RelayCommand<object> NextFromSourceCommand { get; }
+        public RelayCommand<object> ChangeSourceRootCommand { get; }
         public RelayCommand<object> MoveAndNextCommand { get; }
         public RelayCommand<object> BackCommand { get; }
         public RelayCommand<object> BrowseExeCommand { get; }
@@ -91,6 +119,29 @@ namespace PlayniteCustomImporter.Import
         public bool IsChooseStorageStep => CurrentStep == WizardStep.ChooseStorage;
         public bool IsPickExecutableStep => CurrentStep == WizardStep.PickExecutable;
 
+        public string SourceRoot
+        {
+            get => sourceRoot;
+            private set { sourceRoot = value; OnPropertyChanged(); }
+        }
+
+        public string SourceStatusMessage
+        {
+            get => sourceStatusMessage;
+            set { sourceStatusMessage = value; OnPropertyChanged(); }
+        }
+
+        public SourceFolderItem SelectedSourceFolderItem
+        {
+            get => selectedSourceFolderItem;
+            set
+            {
+                selectedSourceFolderItem = value;
+                SelectedSourceFolder = value?.FullPath ?? string.Empty;
+                OnPropertyChanged();
+            }
+        }
+
         public string SelectedSourceFolder
         {
             get => selectedSourceFolder;
@@ -115,26 +166,90 @@ namespace PlayniteCustomImporter.Import
             set { statusMessage = value; OnPropertyChanged(); }
         }
 
-        private void Import()
+        /// <summary>
+        /// Determines where the folder list starts: the configured source folder when set and valid,
+        /// otherwise the current user's Downloads folder.
+        /// </summary>
+        private string ResolveInitialSourceRoot()
         {
-            // Open a native folder browser starting at the configured source folder.
+            if (!string.IsNullOrWhiteSpace(settings.SourceFolder) && Directory.Exists(settings.SourceFolder))
+            {
+                return settings.SourceFolder;
+            }
+
+            return GetDownloadsFolder();
+        }
+
+        /// <summary>
+        /// The current user's Downloads folder. .NET Framework has no special-folder entry for it, so
+        /// it is derived from the user profile (the usual location).
+        /// </summary>
+        private static string GetDownloadsFolder()
+        {
+            var profile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            return string.IsNullOrEmpty(profile) ? string.Empty : Path.Combine(profile, "Downloads");
+        }
+
+        /// <summary>
+        /// (Re)populates the list of candidate game folders under <see cref="SourceRoot"/>.
+        /// </summary>
+        private void ScanSourceFolders()
+        {
+            SourceFolders.Clear();
+            SelectedSourceFolderItem = null;
+            OnPropertyChanged(nameof(SourceRoot));
+
+            if (!Directory.Exists(sourceRoot))
+            {
+                SourceStatusMessage = string.IsNullOrWhiteSpace(sourceRoot)
+                    ? "No source folder is available. Use \"Change folder...\" to pick one."
+                    : $"The folder \"{sourceRoot}\" does not exist. Use \"Change folder...\" to pick another.";
+                return;
+            }
+
+            foreach (var folder in GameImporter.FindGameFolders(sourceRoot))
+            {
+                SourceFolders.Add(new SourceFolderItem(folder));
+            }
+
+            SelectedSourceFolderItem = SourceFolders.FirstOrDefault();
+            SourceStatusMessage = SourceFolders.Count == 0
+                ? "No subfolders containing an .exe were found here. Use \"Change folder...\" to look elsewhere."
+                : $"Found {SourceFolders.Count} folder(s) with an executable. Select the game to import.";
+        }
+
+        /// <summary>
+        /// Lets the user point the scan at a different folder (the manual selector).
+        /// </summary>
+        private void ChangeSourceRoot()
+        {
             using (var dialog = new System.Windows.Forms.FolderBrowserDialog())
             {
-                dialog.Description = "Select the game folder to import";
-                if (Directory.Exists(settings.SourceFolder))
+                dialog.Description = "Select the folder to look for games in";
+                if (Directory.Exists(sourceRoot))
                 {
-                    dialog.SelectedPath = settings.SourceFolder;
+                    dialog.SelectedPath = sourceRoot;
                 }
 
                 if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK &&
                     !string.IsNullOrEmpty(dialog.SelectedPath))
                 {
-                    SelectedSourceFolder = dialog.SelectedPath;
-                    StatusMessage = string.Empty;
-                    RefreshStorageFreeSpace();
-                    CurrentStep = WizardStep.ChooseStorage;
+                    SourceRoot = dialog.SelectedPath;
+                    ScanSourceFolders();
                 }
             }
+        }
+
+        private bool CanNextFromSource()
+        {
+            return !string.IsNullOrWhiteSpace(SelectedSourceFolder) && Directory.Exists(SelectedSourceFolder);
+        }
+
+        private void NextFromSource()
+        {
+            StatusMessage = string.Empty;
+            RefreshStorageFreeSpace();
+            CurrentStep = WizardStep.ChooseStorage;
         }
 
         private void RefreshStorageFreeSpace()
@@ -160,14 +275,14 @@ namespace PlayniteCustomImporter.Import
                 movedFolder = importer.MoveFolder(SelectedSourceFolder, SelectedStorage.Path);
 
                 FoundExecutables.Clear();
-                foreach (var exe in GameImporter.FindTopLevelExes(movedFolder))
+                foreach (var exe in GameImporter.FindExecutables(movedFolder))
                 {
                     FoundExecutables.Add(new ExecutableItem(exe));
                 }
 
                 SelectedExecutable = FoundExecutables.FirstOrDefault();
                 StatusMessage = FoundExecutables.Count == 0
-                    ? "No .exe files found in the top level of the folder. Use \"Browse...\" to pick one manually."
+                    ? "No .exe files found in the folder. Use \"Browse for another .exe...\" to pick one manually."
                     : $"Found {FoundExecutables.Count} executable(s). Select the one to launch the game.";
 
                 CurrentStep = WizardStep.PickExecutable;
@@ -211,7 +326,11 @@ namespace PlayniteCustomImporter.Import
             try
             {
                 var game = importer.AddGame(SelectedExecutable.FullPath);
-                api.Dialogs.ShowMessage($"Added \"{game.Name}\" to your library.", "Custom Importer");
+                api.Dialogs.ShowMessage(
+                    $"Added \"{game.Name}\" to your library.\n\n" +
+                    "To fetch cover art and details, right-click the game and choose " +
+                    "\"Download Metadata\" (the name has been cleaned up so the search matches better).",
+                    "Custom Importer");
                 OnCloseRequested();
             }
             catch (Exception ex)
