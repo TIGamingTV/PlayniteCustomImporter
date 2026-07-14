@@ -24,7 +24,7 @@ button.
 
 ## What you get
 
-A **+** ("Import Game") button on Playnite's left sidebar that opens a short 3-step wizard. When you
+A Import Game button on Playnite's sidebar that opens a short 3-step wizard. When you
 finish it, the extension will have:
 
 - ✅ **Moved** the real game folder into a storage location you choose
