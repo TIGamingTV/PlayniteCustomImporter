@@ -4,6 +4,7 @@ using System.ComponentModel;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Threading.Tasks;
 using System.Windows.Input;
 using Playnite.SDK;
 using Playnite.SDK.Models;
@@ -94,6 +95,10 @@ namespace PlayniteCustomImporter.Import
         private ExecutableItem selectedExecutable;
         private string statusMessage = string.Empty;
         private string sourceStatusMessage = string.Empty;
+        private bool isImporting;
+        private string importStatus = string.Empty;
+        private double importPercent;
+        private bool importIsIndeterminate = true;
 
         public ImportWizardViewModel(IPlayniteAPI api, PlayniteCustomImporterSettings settings)
         {
@@ -115,7 +120,7 @@ namespace PlayniteCustomImporter.Import
             BrowseExeCommand = new RelayCommand<object>(_ => BrowseExe());
             BackCommand = new RelayCommand<object>(_ => Back(), _ => CurrentStep != WizardStep.SelectSource);
             FinishCommand = new RelayCommand<object>(_ => Finish(), _ => CanFinish());
-            CancelCommand = new RelayCommand<object>(_ => OnCloseRequested());
+            CancelCommand = new RelayCommand<object>(_ => OnCloseRequested(), _ => !IsImporting);
 
             ScanSourceFolders();
         }
@@ -203,6 +208,40 @@ namespace PlayniteCustomImporter.Import
         {
             get => statusMessage;
             set { statusMessage = value; OnPropertyChanged(); }
+        }
+
+        /// <summary>
+        /// True while a game folder is being moved. The window shows a blocking progress overlay and
+        /// disables navigation while this is set.
+        /// </summary>
+        public bool IsImporting
+        {
+            get => isImporting;
+            set { isImporting = value; OnPropertyChanged(); CommandManager.InvalidateRequerySuggested(); }
+        }
+
+        /// <summary>The current phase of the import, shown above the progress bar.</summary>
+        public string ImportStatus
+        {
+            get => importStatus;
+            set { importStatus = value; OnPropertyChanged(); }
+        }
+
+        /// <summary>Completion percentage (0–100) of the folder move.</summary>
+        public double ImportPercent
+        {
+            get => importPercent;
+            set { importPercent = value; OnPropertyChanged(); }
+        }
+
+        /// <summary>
+        /// True when the current phase has no measurable percentage (the progress bar animates instead
+        /// of filling to a value).
+        /// </summary>
+        public bool ImportIsIndeterminate
+        {
+            get => importIsIndeterminate;
+            set { importIsIndeterminate = value; OnPropertyChanged(); }
         }
 
         /// <summary>
@@ -359,7 +398,8 @@ namespace PlayniteCustomImporter.Import
 
         private bool CanFinish()
         {
-            return SelectedExecutable != null
+            return !IsImporting
+                && SelectedExecutable != null
                 && !string.IsNullOrWhiteSpace(SelectedSourceFolder)
                 && Directory.Exists(SelectedSourceFolder)
                 && SelectedStorage != null
@@ -370,14 +410,45 @@ namespace PlayniteCustomImporter.Import
         /// Performs the import: moves only the real game folder into storage, sends the leftover download
         /// wrapper to the Recycle Bin, and registers the game. The metadata editor (if enabled) is opened
         /// by the host once this window has closed.
+        ///
+        /// The folder move can take a long time (large games, cross-volume copies), so it runs on a
+        /// background thread while a progress overlay keeps the window responsive. <see cref="Progress{T}"/>
+        /// marshals the reports back to the UI thread, so the bound properties can be set directly here.
         /// </summary>
-        private void Finish()
+        private async void Finish()
         {
+            var sourceFolder = SelectedSourceFolder;
+            var exePath = SelectedExecutable.FullPath;
+            var storagePath = SelectedStorage.Path;
+
+            ImportStatus = "Preparing...";
+            ImportIsIndeterminate = true;
+            ImportPercent = 0;
+            IsImporting = true;
+
+            var progress = new Progress<ImportProgress>(update =>
+            {
+                ImportStatus = update.Status;
+                if (update.Percent.HasValue)
+                {
+                    ImportIsIndeterminate = false;
+                    ImportPercent = update.Percent.Value;
+                }
+                else
+                {
+                    ImportIsIndeterminate = true;
+                }
+            });
+
             try
             {
-                var result = importer.ImportGameFolder(
-                    SelectedSourceFolder, SelectedExecutable.FullPath, SelectedStorage.Path);
+                var result = await Task.Run(() =>
+                    importer.ImportGameFolder(sourceFolder, exePath, storagePath, progress));
 
+                // Registering the game touches the Playnite database, which expects to be called from
+                // the UI thread, so do it here after the background move has finished.
+                ImportStatus = "Adding game to your library...";
+                ImportIsIndeterminate = true;
                 var game = importer.AddGame(result.NewExePath);
                 ImportedGame = game;
 
@@ -399,6 +470,10 @@ namespace PlayniteCustomImporter.Import
             catch (Exception ex)
             {
                 api.Dialogs.ShowErrorMessage(ex.Message, "Custom Importer");
+            }
+            finally
+            {
+                IsImporting = false;
             }
         }
 

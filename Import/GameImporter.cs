@@ -10,6 +10,24 @@ using Playnite.SDK.Models;
 namespace PlayniteCustomImporter.Import
 {
     /// <summary>
+    /// A progress update reported while a game folder is being moved. <see cref="Status"/> is a
+    /// human-readable description of the current phase; <see cref="Percent"/> is the completion
+    /// percentage (0–100) when it can be measured, or null for phases whose length is unknown (the
+    /// UI shows an indeterminate bar for those).
+    /// </summary>
+    public class ImportProgress
+    {
+        public string Status { get; }
+        public double? Percent { get; }
+
+        public ImportProgress(string status, double? percent = null)
+        {
+            Status = status;
+            Percent = percent;
+        }
+    }
+
+    /// <summary>
     /// Non-UI helper that performs the folder move, executable discovery and game registration.
     /// </summary>
     public class GameImporter
@@ -156,9 +174,10 @@ namespace PlayniteCustomImporter.Import
         /// <summary>
         /// Moves <paramref name="sourceFolder"/> into <paramref name="storageRoot"/>, keeping the
         /// original folder name. Falls back to copy+delete for cross-volume moves. Returns the new
-        /// full path of the moved folder.
+        /// full path of the moved folder. Progress (if supplied) is reported during the slow
+        /// cross-volume copy so the caller can drive a progress bar.
         /// </summary>
-        public string MoveFolder(string sourceFolder, string storageRoot)
+        public string MoveFolder(string sourceFolder, string storageRoot, IProgress<ImportProgress> progress = null)
         {
             if (string.IsNullOrWhiteSpace(sourceFolder) || !Directory.Exists(sourceFolder))
             {
@@ -200,6 +219,9 @@ namespace PlayniteCustomImporter.Import
 
             try
             {
+                // A same-volume move is a near-instant metadata operation, so no per-file progress
+                // is possible (or needed). Signal the indeterminate phase and let it run.
+                progress?.Report(new ImportProgress("Moving game folder...", null));
                 Directory.Move(sourceFolder, destination);
             }
             catch (IOException ex)
@@ -208,7 +230,18 @@ namespace PlayniteCustomImporter.Import
                 logger.Warn(ex, "Directory.Move failed, falling back to copy+delete.");
                 try
                 {
-                    CopyDirectory(sourceFolder, destination);
+                    // Total the bytes up front so the copy can report a real percentage.
+                    progress?.Report(new ImportProgress("Calculating size...", null));
+                    var totalBytes = GetDirectorySize(sourceFolder);
+                    long copiedBytes = 0;
+                    CopyDirectory(sourceFolder, destination, bytes =>
+                    {
+                        copiedBytes += bytes;
+                        var percent = totalBytes > 0
+                            ? Math.Min(100.0, copiedBytes * 100.0 / totalBytes)
+                            : (double?)null;
+                        progress?.Report(new ImportProgress("Moving game folder...", percent));
+                    });
                 }
                 catch
                 {
@@ -220,6 +253,7 @@ namespace PlayniteCustomImporter.Import
                     throw;
                 }
 
+                progress?.Report(new ImportProgress("Removing original folder...", null));
                 Directory.Delete(sourceFolder, true);
             }
 
@@ -246,7 +280,8 @@ namespace PlayniteCustomImporter.Import
         /// wrapper) the whole folder is moved and nothing is deleted. Returns the new game folder and the
         /// updated executable path inside it.
         /// </summary>
-        public ImportResult ImportGameFolder(string downloadFolder, string exePath, string storageRoot)
+        public ImportResult ImportGameFolder(string downloadFolder, string exePath, string storageRoot,
+            IProgress<ImportProgress> progress = null)
         {
             if (string.IsNullOrWhiteSpace(downloadFolder) || !Directory.Exists(downloadFolder))
             {
@@ -295,7 +330,7 @@ namespace PlayniteCustomImporter.Import
                 throw new IOException("Could not locate the executable inside the game folder.");
             }
 
-            var movedFolder = MoveFolder(gameFolder, storageRoot);
+            var movedFolder = MoveFolder(gameFolder, storageRoot, progress);
             var newExePath = Path.Combine(movedFolder, exeRelativeToGame);
 
             var wrapperRemoved = false;
@@ -305,6 +340,7 @@ namespace PlayniteCustomImporter.Import
             {
                 // The game has been moved out; whatever is left in the download folder is the junk the
                 // user wants gone. Prefer the Recycle Bin so it stays recoverable.
+                progress?.Report(new ImportProgress("Cleaning up leftover download folder...", null));
                 wrapperRemoved = DeleteToRecycleBin(downloadFolder);
             }
 
@@ -538,20 +574,66 @@ namespace PlayniteCustomImporter.Import
             }
         }
 
-        private static void CopyDirectory(string source, string destination)
+        /// <summary>
+        /// Recursively copies <paramref name="source"/> into <paramref name="destination"/>. After each
+        /// file is copied, <paramref name="onBytesCopied"/> is invoked with that file's size so the
+        /// caller can track progress. The callback may be null.
+        /// </summary>
+        private static void CopyDirectory(string source, string destination, Action<long> onBytesCopied = null)
         {
             Directory.CreateDirectory(destination);
 
             foreach (var file in Directory.GetFiles(source))
             {
                 var target = Path.Combine(destination, Path.GetFileName(file));
+                var length = 0L;
+                try
+                {
+                    length = new FileInfo(file).Length;
+                }
+                catch
+                {
+                    // If the size can't be read the copy still proceeds; progress just won't advance
+                    // for this file.
+                }
+
                 File.Copy(file, target, true);
+                onBytesCopied?.Invoke(length);
             }
 
             foreach (var dir in Directory.GetDirectories(source))
             {
-                CopyDirectory(dir, Path.Combine(destination, Path.GetFileName(dir)));
+                CopyDirectory(dir, Path.Combine(destination, Path.GetFileName(dir)), onBytesCopied);
             }
+        }
+
+        /// <summary>
+        /// Total size in bytes of every file under <paramref name="folder"/>. Used as the denominator
+        /// for copy progress; unreadable files/folders are skipped rather than aborting the tally.
+        /// </summary>
+        private static long GetDirectorySize(string folder)
+        {
+            long total = 0;
+            try
+            {
+                foreach (var file in Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories))
+                {
+                    try
+                    {
+                        total += new FileInfo(file).Length;
+                    }
+                    catch
+                    {
+                        // Skip files we cannot stat.
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.Warn(ex, $"Could not measure the size of {folder}; progress will be approximate.");
+            }
+
+            return total;
         }
     }
 }
