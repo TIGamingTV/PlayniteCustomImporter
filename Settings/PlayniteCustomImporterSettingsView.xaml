@@ -24,10 +24,10 @@
                          VerticalContentAlignment="Center" />
             </DockPanel>
 
-            <CheckBox Content="Show a &quot;Download Metadata&quot; reminder after import"
+            <CheckBox Content="Open the game's editor after import to download metadata"
                       IsChecked="{Binding Settings.OpenMetadataAfterImport}"
                       Margin="0,0,0,4" />
-            <TextBlock Text="Playnite's SDK has no fully-automatic metadata download for plugins; after import you can right-click the game and choose Download Metadata."
+            <TextBlock Text="Playnite has no fully-automatic metadata download for plugins; this opens the editor where you can click Download Metadata."
                        TextWrapping="Wrap"
                        Opacity="0.7"
                        Margin="0,0,0,20" />

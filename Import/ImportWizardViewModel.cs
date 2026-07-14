@@ -390,8 +390,7 @@ namespace PlayniteCustomImporter.Import
 
                 if (settings.OpenMetadataAfterImport)
                 {
-                    summary += "\n\nTo fetch cover art and details, right-click the game and choose " +
-                               "\"Download Metadata\".";
+                    summary += "\n\nOpening the game editor so you can download metadata.";
                 }
 
                 api.Dialogs.ShowMessage(summary, "Custom Importer");
