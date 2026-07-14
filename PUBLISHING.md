@@ -35,8 +35,8 @@ have to touch the add-on database again — cutting a new release is enough.
 1. **Cut a release** (see below) so `installer.yaml` and the `.pext` exist as release assets.
 2. **Fork** [`JosefNemec/PlayniteAddonDatabase`](https://github.com/JosefNemec/PlayniteAddonDatabase).
 3. Copy `addon-manifests/PlayniteCustomImporter_b7e2f4a9-3c1d-4e8a-9f26-5d0c7a1b8e34.yaml` into that
-   repo (follow its README for the exact folder — currently the manifests live under the root
-   `manifests/` tree).
+   repo's **`addons/generic/`** folder (the `generic` subfolder is for `Generic`-type plugins; the
+   others are `library`, `metadata`, `themes_desktop`, and `themes_fullscreen`).
 4. Open a pull request. Playnite's validation checks that the `InstallerManifestUrl` resolves and that
    the installer manifest is well-formed, so make sure step 1 is done first.
 5. Once merged, the add-on appears in Playnite's **Browse** tab.

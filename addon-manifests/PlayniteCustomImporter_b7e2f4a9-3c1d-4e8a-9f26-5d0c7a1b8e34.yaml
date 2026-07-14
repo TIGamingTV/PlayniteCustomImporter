@@ -4,6 +4,7 @@ InstallerManifestUrl: https://github.com/TIGamingTV/PlayniteCustomImporter/relea
 ShortDescription: 'Import a downloaded game folder into your library from a sidebar button: move it into storage, recycle the leftovers, register a ready-to-play entry, and clean its name.'
 Name: 'Custom Importer'
 Author: 'TIGamingTV'
+IconUrl: https://raw.githubusercontent.com/TIGamingTV/PlayniteCustomImporter/main/icon.png
 Tags: ['Import', 'Utility', 'Library', 'Games']
 SourceUrl: https://github.com/TIGamingTV/PlayniteCustomImporter
 Links:
