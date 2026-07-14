@@ -14,12 +14,23 @@ namespace PlayniteCustomImporter.Settings
     public class PlayniteCustomImporterSettings : INotifyPropertyChanged
     {
         private string sourceFolder = string.Empty;
+        private bool openMetadataAfterImport = true;
         private ObservableCollection<StorageLocation> storageLocations = new ObservableCollection<StorageLocation>();
 
         public string SourceFolder
         {
             get => sourceFolder;
             set { sourceFolder = value; OnPropertyChanged(); }
+        }
+
+        /// <summary>
+        /// When true, the game's edit dialog is opened after import so metadata can be downloaded.
+        /// (The Playnite SDK has no fully-silent metadata download for plugins.)
+        /// </summary>
+        public bool OpenMetadataAfterImport
+        {
+            get => openMetadataAfterImport;
+            set { openMetadataAfterImport = value; OnPropertyChanged(); }
         }
 
         public ObservableCollection<StorageLocation> StorageLocations
@@ -111,6 +122,7 @@ namespace PlayniteCustomImporter.Settings
             editingClone = new PlayniteCustomImporterSettings
             {
                 SourceFolder = Settings.SourceFolder,
+                OpenMetadataAfterImport = Settings.OpenMetadataAfterImport,
                 StorageLocations = new ObservableCollection<StorageLocation>(
                     Settings.StorageLocations.Select(l => new StorageLocation { Name = l.Name, Path = l.Path }))
             };

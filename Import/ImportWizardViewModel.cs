@@ -6,6 +6,7 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Windows.Input;
 using Playnite.SDK;
+using Playnite.SDK.Models;
 using PlayniteCustomImporter.Settings;
 
 namespace PlayniteCustomImporter.Import
@@ -13,21 +14,53 @@ namespace PlayniteCustomImporter.Import
     public enum WizardStep
     {
         SelectSource,
-        ChooseStorage,
-        PickExecutable
+        PickExecutable,
+        ChooseStorage
     }
 
     /// <summary>
-    /// A discovered executable, exposing a friendly file name for display while keeping the full path.
+    /// A discovered executable, exposing a friendly display for the list while keeping the full path.
+    /// When a base folder is supplied the display is the path relative to it, so nested launchers are
+    /// distinguishable (e.g. "Some Game\bin\game.exe").
     /// </summary>
     public class ExecutableItem
     {
+        private readonly string basePath;
+
         public string FullPath { get; }
         public string FileName => System.IO.Path.GetFileName(FullPath);
 
-        public ExecutableItem(string fullPath)
+        public string DisplayPath
+        {
+            get
+            {
+                if (!string.IsNullOrEmpty(basePath))
+                {
+                    try
+                    {
+                        var root = System.IO.Path.GetFullPath(basePath).TrimEnd(
+                            System.IO.Path.DirectorySeparatorChar, System.IO.Path.AltDirectorySeparatorChar)
+                            + System.IO.Path.DirectorySeparatorChar;
+                        var full = System.IO.Path.GetFullPath(FullPath);
+                        if (full.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+                        {
+                            return full.Substring(root.Length);
+                        }
+                    }
+                    catch
+                    {
+                        // Fall through to the plain file name.
+                    }
+                }
+
+                return FileName;
+            }
+        }
+
+        public ExecutableItem(string fullPath, string basePath = null)
         {
             FullPath = fullPath;
+            this.basePath = basePath;
         }
     }
 
@@ -58,7 +91,6 @@ namespace PlayniteCustomImporter.Import
         private string selectedSourceFolder = string.Empty;
         private SourceFolderItem selectedSourceFolderItem;
         private StorageLocation selectedStorage;
-        private string movedFolder = string.Empty;
         private ExecutableItem selectedExecutable;
         private string statusMessage = string.Empty;
         private string sourceStatusMessage = string.Empty;
@@ -79,10 +111,10 @@ namespace PlayniteCustomImporter.Import
 
             NextFromSourceCommand = new RelayCommand<object>(_ => NextFromSource(), _ => CanNextFromSource());
             ChangeSourceRootCommand = new RelayCommand<object>(_ => ChangeSourceRoot());
-            MoveAndNextCommand = new RelayCommand<object>(_ => MoveAndNext(), _ => CanMoveAndNext());
-            BackCommand = new RelayCommand<object>(_ => CurrentStep = WizardStep.SelectSource, _ => CurrentStep == WizardStep.ChooseStorage);
+            PickExeNextCommand = new RelayCommand<object>(_ => PickExeNext(), _ => SelectedExecutable != null);
             BrowseExeCommand = new RelayCommand<object>(_ => BrowseExe());
-            AddGameCommand = new RelayCommand<object>(_ => AddGame(), _ => SelectedExecutable != null);
+            BackCommand = new RelayCommand<object>(_ => Back(), _ => CurrentStep != WizardStep.SelectSource);
+            FinishCommand = new RelayCommand<object>(_ => Finish(), _ => CanFinish());
             CancelCommand = new RelayCommand<object>(_ => OnCloseRequested());
 
             ScanSourceFolders();
@@ -94,13 +126,19 @@ namespace PlayniteCustomImporter.Import
 
         public RelayCommand<object> NextFromSourceCommand { get; }
         public RelayCommand<object> ChangeSourceRootCommand { get; }
-        public RelayCommand<object> MoveAndNextCommand { get; }
-        public RelayCommand<object> BackCommand { get; }
+        public RelayCommand<object> PickExeNextCommand { get; }
         public RelayCommand<object> BrowseExeCommand { get; }
-        public RelayCommand<object> AddGameCommand { get; }
+        public RelayCommand<object> BackCommand { get; }
+        public RelayCommand<object> FinishCommand { get; }
         public RelayCommand<object> CancelCommand { get; }
 
         public event EventHandler CloseRequested;
+
+        /// <summary>
+        /// The game created by a successful import, or null if none was created. The host reads this
+        /// after the window closes to optionally open the metadata editor.
+        /// </summary>
+        public Game ImportedGame { get; private set; }
 
         public WizardStep CurrentStep
         {
@@ -110,14 +148,15 @@ namespace PlayniteCustomImporter.Import
                 currentStep = value;
                 OnPropertyChanged();
                 OnPropertyChanged(nameof(IsSelectSourceStep));
-                OnPropertyChanged(nameof(IsChooseStorageStep));
                 OnPropertyChanged(nameof(IsPickExecutableStep));
+                OnPropertyChanged(nameof(IsChooseStorageStep));
+                CommandManager.InvalidateRequerySuggested();
             }
         }
 
         public bool IsSelectSourceStep => CurrentStep == WizardStep.SelectSource;
-        public bool IsChooseStorageStep => CurrentStep == WizardStep.ChooseStorage;
         public bool IsPickExecutableStep => CurrentStep == WizardStep.PickExecutable;
+        public bool IsChooseStorageStep => CurrentStep == WizardStep.ChooseStorage;
 
         public string SourceRoot
         {
@@ -197,7 +236,6 @@ namespace PlayniteCustomImporter.Import
         {
             SourceFolders.Clear();
             SelectedSourceFolderItem = null;
-            OnPropertyChanged(nameof(SourceRoot));
 
             if (!Directory.Exists(sourceRoot))
             {
@@ -245,11 +283,70 @@ namespace PlayniteCustomImporter.Import
             return !string.IsNullOrWhiteSpace(SelectedSourceFolder) && Directory.Exists(SelectedSourceFolder);
         }
 
+        /// <summary>
+        /// Moves to the executable-picking step, listing the game executables found anywhere inside the
+        /// selected download folder (so the real game exe is offered even when it sits in a subfolder
+        /// alongside junk).
+        /// </summary>
         private void NextFromSource()
         {
-            StatusMessage = string.Empty;
+            FoundExecutables.Clear();
+            foreach (var exe in GameImporter.FindGameExecutables(SelectedSourceFolder))
+            {
+                FoundExecutables.Add(new ExecutableItem(exe, SelectedSourceFolder));
+            }
+
+            SelectedExecutable = FoundExecutables.FirstOrDefault();
+            StatusMessage = FoundExecutables.Count == 0
+                ? "No .exe files found in this folder. Use \"Browse for another .exe...\" to pick one manually."
+                : $"Found {FoundExecutables.Count} executable(s). Select the one that launches the game — its folder is what gets kept.";
+
+            CurrentStep = WizardStep.PickExecutable;
+        }
+
+        private void BrowseExe()
+        {
+            using (var dialog = new System.Windows.Forms.OpenFileDialog())
+            {
+                dialog.Title = "Select the game executable";
+                dialog.Filter = "Executables (*.exe)|*.exe|All files (*.*)|*.*";
+                if (Directory.Exists(SelectedSourceFolder))
+                {
+                    dialog.InitialDirectory = SelectedSourceFolder;
+                }
+
+                if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK &&
+                    !string.IsNullOrEmpty(dialog.FileName))
+                {
+                    var existing = FoundExecutables.FirstOrDefault(
+                        e => string.Equals(e.FullPath, dialog.FileName, StringComparison.OrdinalIgnoreCase));
+                    if (existing == null)
+                    {
+                        existing = new ExecutableItem(dialog.FileName, SelectedSourceFolder);
+                        FoundExecutables.Add(existing);
+                    }
+
+                    SelectedExecutable = existing;
+                }
+            }
+        }
+
+        private void PickExeNext()
+        {
             RefreshStorageFreeSpace();
             CurrentStep = WizardStep.ChooseStorage;
+        }
+
+        private void Back()
+        {
+            if (CurrentStep == WizardStep.ChooseStorage)
+            {
+                CurrentStep = WizardStep.PickExecutable;
+            }
+            else if (CurrentStep == WizardStep.PickExecutable)
+            {
+                CurrentStep = WizardStep.SelectSource;
+            }
         }
 
         private void RefreshStorageFreeSpace()
@@ -260,77 +357,43 @@ namespace PlayniteCustomImporter.Import
             }
         }
 
-        private bool CanMoveAndNext()
+        private bool CanFinish()
         {
-            return !string.IsNullOrWhiteSpace(SelectedSourceFolder)
+            return SelectedExecutable != null
+                && !string.IsNullOrWhiteSpace(SelectedSourceFolder)
                 && Directory.Exists(SelectedSourceFolder)
                 && SelectedStorage != null
                 && !string.IsNullOrWhiteSpace(SelectedStorage.Path);
         }
 
-        private void MoveAndNext()
+        /// <summary>
+        /// Performs the import: moves only the real game folder into storage, sends the leftover download
+        /// wrapper to the Recycle Bin, and registers the game. The metadata editor (if enabled) is opened
+        /// by the host once this window has closed.
+        /// </summary>
+        private void Finish()
         {
             try
             {
-                movedFolder = importer.MoveFolder(SelectedSourceFolder, SelectedStorage.Path);
+                var result = importer.ImportGameFolder(
+                    SelectedSourceFolder, SelectedExecutable.FullPath, SelectedStorage.Path);
 
-                FoundExecutables.Clear();
-                foreach (var exe in GameImporter.FindExecutables(movedFolder))
+                var game = importer.AddGame(result.NewExePath);
+                ImportedGame = game;
+
+                var summary = $"Added \"{game.Name}\" to your library.";
+                if (result.WrapperRemoved)
                 {
-                    FoundExecutables.Add(new ExecutableItem(exe));
+                    summary += "\n\nThe game folder was moved to your storage location and the leftover " +
+                               "download folder was sent to the Recycle Bin.";
                 }
 
-                SelectedExecutable = FoundExecutables.FirstOrDefault();
-                StatusMessage = FoundExecutables.Count == 0
-                    ? "No .exe files found in the folder. Use \"Browse for another .exe...\" to pick one manually."
-                    : $"Found {FoundExecutables.Count} executable(s). Select the one to launch the game.";
-
-                CurrentStep = WizardStep.PickExecutable;
-            }
-            catch (Exception ex)
-            {
-                api.Dialogs.ShowErrorMessage(ex.Message, "Custom Importer");
-            }
-        }
-
-        private void BrowseExe()
-        {
-            using (var dialog = new System.Windows.Forms.OpenFileDialog())
-            {
-                dialog.Title = "Select the game executable";
-                dialog.Filter = "Executables (*.exe)|*.exe|All files (*.*)|*.*";
-                var initialDir = Directory.Exists(movedFolder) ? movedFolder : SelectedSourceFolder;
-                if (Directory.Exists(initialDir))
+                if (settings.OpenMetadataAfterImport)
                 {
-                    dialog.InitialDirectory = initialDir;
+                    summary += "\n\nOpening the game editor so you can download metadata.";
                 }
 
-                if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK &&
-                    !string.IsNullOrEmpty(dialog.FileName))
-                {
-                    var existing = FoundExecutables.FirstOrDefault(
-                        e => string.Equals(e.FullPath, dialog.FileName, StringComparison.OrdinalIgnoreCase));
-                    if (existing == null)
-                    {
-                        existing = new ExecutableItem(dialog.FileName);
-                        FoundExecutables.Add(existing);
-                    }
-
-                    SelectedExecutable = existing;
-                }
-            }
-        }
-
-        private void AddGame()
-        {
-            try
-            {
-                var game = importer.AddGame(SelectedExecutable.FullPath);
-                api.Dialogs.ShowMessage(
-                    $"Added \"{game.Name}\" to your library.\n\n" +
-                    "To fetch cover art and details, right-click the game and choose " +
-                    "\"Download Metadata\" (the name has been cleaned up so the search matches better).",
-                    "Custom Importer");
+                api.Dialogs.ShowMessage(summary, "Custom Importer");
                 OnCloseRequested();
             }
             catch (Exception ex)

@@ -114,36 +114,36 @@ namespace PlayniteCustomImporter.Import
         }
 
         /// <summary>
-        /// Lists candidate game executables in <paramref name="folder"/>. Top-level exes are preferred;
-        /// when there are none (the game lives in a subfolder), it falls back to a recursive search with
-        /// obvious installers/redistributables filtered out so the user still gets a useful list.
+        /// Lists candidate game executables anywhere under <paramref name="folder"/>. Obvious
+        /// installers/redistributables are filtered out; if that leaves nothing, the unfiltered list is
+        /// returned so the user still has something to pick. Results are ordered shallowest-first so the
+        /// most likely launcher (usually near the top) appears at the top of the list.
         /// </summary>
-        public static List<string> FindExecutables(string folder)
+        public static List<string> FindGameExecutables(string folder)
         {
-            var topLevel = FindTopLevelExes(folder);
-            if (topLevel.Count > 0)
-            {
-                return topLevel;
-            }
-
             if (string.IsNullOrEmpty(folder) || !Directory.Exists(folder))
             {
-                return topLevel;
+                return new List<string>();
             }
 
+            List<string> all;
             try
             {
-                return Directory
-                    .EnumerateFiles(folder, "*.exe", SearchOption.AllDirectories)
-                    .Where(p => !IsLikelyNonGameExe(p))
-                    .OrderBy(p => p, StringComparer.OrdinalIgnoreCase)
-                    .ToList();
+                all = Directory.EnumerateFiles(folder, "*.exe", SearchOption.AllDirectories).ToList();
             }
             catch (Exception ex)
             {
-                logger.Warn(ex, $"Recursive executable search failed under {folder}.");
-                return topLevel;
+                logger.Warn(ex, $"Recursive executable search failed under {folder}, falling back to top level.");
+                return FindTopLevelExes(folder);
             }
+
+            var filtered = all.Where(p => !IsLikelyNonGameExe(p)).ToList();
+            var chosen = filtered.Count > 0 ? filtered : all;
+
+            return chosen
+                .OrderBy(p => p.Count(c => c == Path.DirectorySeparatorChar || c == Path.AltDirectorySeparatorChar))
+                .ThenBy(p => p, StringComparer.OrdinalIgnoreCase)
+                .ToList();
         }
 
         private static bool IsLikelyNonGameExe(string exePath)
@@ -224,6 +224,144 @@ namespace PlayniteCustomImporter.Import
             }
 
             return destination;
+        }
+
+        /// <summary>
+        /// Outcome of <see cref="ImportGameFolder"/>: where the game ended up and whether the leftover
+        /// download wrapper was removed.
+        /// </summary>
+        public class ImportResult
+        {
+            public string MovedFolder { get; set; }
+            public string NewExePath { get; set; }
+            public bool WrapperRemoved { get; set; }
+        }
+
+        /// <summary>
+        /// Moves only the real game folder (the top-level subfolder of <paramref name="downloadFolder"/>
+        /// that actually contains <paramref name="exePath"/>) into <paramref name="storageRoot"/>, then
+        /// sends the leftover download wrapper — junk files and other folders — to the Recycle Bin.
+        ///
+        /// If the executable sits directly in <paramref name="downloadFolder"/> (a flat download with no
+        /// wrapper) the whole folder is moved and nothing is deleted. Returns the new game folder and the
+        /// updated executable path inside it.
+        /// </summary>
+        public ImportResult ImportGameFolder(string downloadFolder, string exePath, string storageRoot)
+        {
+            if (string.IsNullOrWhiteSpace(downloadFolder) || !Directory.Exists(downloadFolder))
+            {
+                throw new DirectoryNotFoundException($"Download folder does not exist: {downloadFolder}");
+            }
+
+            if (string.IsNullOrWhiteSpace(exePath) || !File.Exists(exePath))
+            {
+                throw new FileNotFoundException($"Executable not found: {exePath}");
+            }
+
+            var downloadFull = Path.GetFullPath(downloadFolder);
+            var exeFull = Path.GetFullPath(exePath);
+            var relativeExe = GetRelativePath(downloadFull, exeFull);
+
+            string gameFolder;
+            bool exeInsideWrapper;
+            if (relativeExe == null)
+            {
+                // The chosen exe lives outside the download folder (e.g. browsed manually). Move its own
+                // folder and leave the download folder alone.
+                gameFolder = Path.GetDirectoryName(exeFull);
+                exeInsideWrapper = false;
+            }
+            else
+            {
+                var separatorIndex = relativeExe.IndexOfAny(new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar });
+                if (separatorIndex < 0)
+                {
+                    // Exe is directly in the download folder: the folder itself is the game, no wrapper.
+                    gameFolder = downloadFull;
+                    exeInsideWrapper = false;
+                }
+                else
+                {
+                    // Exe is nested: the first path segment is the real game folder to keep.
+                    var firstSegment = relativeExe.Substring(0, separatorIndex);
+                    gameFolder = Path.Combine(downloadFull, firstSegment);
+                    exeInsideWrapper = true;
+                }
+            }
+
+            var exeRelativeToGame = GetRelativePath(Path.GetFullPath(gameFolder), exeFull);
+            if (exeRelativeToGame == null)
+            {
+                throw new IOException("Could not locate the executable inside the game folder.");
+            }
+
+            var movedFolder = MoveFolder(gameFolder, storageRoot);
+            var newExePath = Path.Combine(movedFolder, exeRelativeToGame);
+
+            var wrapperRemoved = false;
+            if (exeInsideWrapper &&
+                !string.Equals(Path.GetFullPath(gameFolder), downloadFull, StringComparison.OrdinalIgnoreCase) &&
+                Directory.Exists(downloadFolder))
+            {
+                // The game has been moved out; whatever is left in the download folder is the junk the
+                // user wants gone. Prefer the Recycle Bin so it stays recoverable.
+                wrapperRemoved = DeleteToRecycleBin(downloadFolder);
+            }
+
+            return new ImportResult
+            {
+                MovedFolder = movedFolder,
+                NewExePath = newExePath,
+                WrapperRemoved = wrapperRemoved
+            };
+        }
+
+        /// <summary>
+        /// Path of <paramref name="fullPath"/> relative to <paramref name="basePath"/>, or null when
+        /// <paramref name="fullPath"/> is not located under <paramref name="basePath"/>. Both are
+        /// expected to be absolute.
+        /// </summary>
+        private static string GetRelativePath(string basePath, string fullPath)
+        {
+            var baseWithSeparator = AppendDirectorySeparator(basePath);
+            if (!fullPath.StartsWith(baseWithSeparator, StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
+            return fullPath.Substring(baseWithSeparator.Length);
+        }
+
+        /// <summary>
+        /// Deletes <paramref name="path"/> to the Recycle Bin so it can be recovered. Falls back to a
+        /// permanent delete if the Recycle Bin is unavailable (e.g. a network drive). Returns true when
+        /// the folder was removed.
+        /// </summary>
+        private static bool DeleteToRecycleBin(string path)
+        {
+            try
+            {
+                Microsoft.VisualBasic.FileIO.FileSystem.DeleteDirectory(
+                    path,
+                    Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs,
+                    Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin,
+                    Microsoft.VisualBasic.FileIO.UICancelOption.DoNothing);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                logger.Warn(ex, $"Recycle Bin delete failed for {path}, attempting a permanent delete.");
+                try
+                {
+                    Directory.Delete(path, true);
+                    return true;
+                }
+                catch (Exception ex2)
+                {
+                    logger.Error(ex2, $"Could not delete leftover download folder {path}.");
+                    return false;
+                }
+            }
         }
 
         /// <summary>
