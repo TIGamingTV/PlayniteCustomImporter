@@ -6,23 +6,28 @@ few clicks from a left-sidebar button.
 
 ## What it does
 
-Adds an **Import Game** button to Playnite's left sidebar. Clicking it opens a 3-step wizard:
+Adds an **Import Game** button (a **+** icon) to Playnite's left sidebar. Clicking it opens a
+3-step wizard:
 
-1. **Select the game folder** — the *Import...* button opens a Windows folder browser, starting
-   in the configured source folder, so you can pick the folder you just downloaded.
+1. **Select the game folder** — the wizard lists the subfolders of your **Downloads** folder that
+   contain an `.exe` (so you only see plausible games). Use *Change folder...* to look somewhere
+   else — or point at the configured source folder, if you set one in the settings.
 2. **Choose a storage location** — pick one of your configured storage locations. The selected
    folder is then **moved** into it (with a copy-and-delete fallback for moves across drives).
-3. **Pick the executable** — the wizard lists the `.exe` files at the top level of the moved
-   folder. Select one, or use *Browse for another .exe...* to pick a launcher buried deeper in
-   the folder. **Add to Playnite** registers it as a game — install directory set to the exe's
-   folder, a *Play* action pointing at the exe, and the game marked as installed (the same result
-   as adding a game manually by executable).
+3. **Pick the executable** — the wizard lists the `.exe` files in the moved folder (top level
+   first, falling back to a filtered recursive search that skips installers/redistributables).
+   Select one, or use *Browse for another .exe...* to pick a launcher manually. **Add to Playnite**
+   registers it as a game — install directory set to the exe's folder, a *Play* action pointing at
+   the exe, and the game marked as installed (the same result as adding a game manually by
+   executable). The game name is cleaned of scene/repacker tags so Playnite's **Download Metadata**
+   search matches better, and re-importing the same executable is blocked to avoid duplicates.
 
 ## Settings
 
 Open the plugin settings (Playnite → Add-ons → Extensions settings → Custom Importer):
 
-- **Source folder** — where the *Import...* browser starts.
+- **Source folder** — where the wizard looks for games in step 1. Leave it empty to default to
+  your **Downloads** folder.
 - **Storage locations** — named `Name → Path` destinations offered in step 2. Add, browse for,
   and remove them here.
 
@@ -72,9 +77,11 @@ and storage folders in the plugin settings before your first import.
 
 ## Manual test checklist
 
-1. Configure a source folder and at least one storage location in settings.
-2. Click **Import Game**, browse to a test game folder containing an `.exe`, and select it.
+1. Configure at least one storage location in settings (a source folder is optional; the wizard
+   defaults to Downloads).
+2. Click **Import Game** (the **+** on the sidebar). Confirm step 1 lists only the folders under
+   Downloads that contain an `.exe`; select one (or use *Change folder...*) and click **Next**.
 3. Choose a storage location and click **Next** — confirm the folder moved into that location.
 4. Select the `.exe` (or browse for one) and click **Add to Playnite**.
-5. Confirm the new game appears in your library, its install directory is the moved folder, and
-   it launches.
+5. Confirm the new game appears in your library with a cleaned-up name, its install directory is
+   the moved folder, and it launches. Re-running the import on the same exe should be refused.

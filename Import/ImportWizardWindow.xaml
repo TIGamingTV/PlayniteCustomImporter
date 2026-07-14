@@ -129,23 +129,44 @@
         <!-- Body -->
         <Grid Grid.Row="1">
             <!-- Step 1: select source -->
-            <StackPanel Visibility="{Binding IsSelectSourceStep, Converter={StaticResource BoolToVis}}">
-                <TextBlock Text="Click Import to browse for the game folder you want to add. Browsing starts in the configured source folder."
+            <DockPanel Visibility="{Binding IsSelectSourceStep, Converter={StaticResource BoolToVis}}">
+                <TextBlock DockPanel.Dock="Top"
+                           Text="Pick the downloaded game folder to import. Only folders that contain an .exe are listed."
                            TextWrapping="Wrap"
-                           Margin="0,0,0,12" />
-                <Button Content="Import..."
-                        Style="{StaticResource DarkButton}"
-                        Background="#5E5E5E"
-                        HorizontalAlignment="Left"
-                        Padding="24,8"
-                        Command="{Binding ImportCommand}" />
-                <TextBlock Text="Selected folder:"
-                           FontWeight="Bold"
-                           Margin="0,16,0,4" />
-                <TextBlock Text="{Binding SelectedSourceFolder}"
+                           Margin="0,0,0,8" />
+                <Grid DockPanel.Dock="Top" Margin="0,0,0,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0"
+                               Text="Looking in:"
+                               FontWeight="Bold"
+                               VerticalAlignment="Center"
+                               Margin="0,0,8,0" />
+                    <TextBlock Grid.Column="1"
+                               Text="{Binding SourceRoot}"
+                               TextTrimming="CharacterEllipsis"
+                               ToolTip="{Binding SourceRoot}"
+                               Foreground="#B8B8B8"
+                               VerticalAlignment="Center" />
+                    <Button Grid.Column="2"
+                            Content="Change folder..."
+                            Style="{StaticResource DarkButton}"
+                            Background="#474747"
+                            Margin="8,0,0,0"
+                            Command="{Binding ChangeSourceRootCommand}" />
+                </Grid>
+                <TextBlock DockPanel.Dock="Bottom"
+                           Text="{Binding SourceStatusMessage}"
                            TextWrapping="Wrap"
-                           Foreground="#B8B8B8" />
-            </StackPanel>
+                           Foreground="#9A9A9A"
+                           Margin="0,8,0,0" />
+                <ListBox ItemsSource="{Binding SourceFolders}"
+                         SelectedItem="{Binding SelectedSourceFolderItem}"
+                         DisplayMemberPath="Name" />
+            </DockPanel>
 
             <!-- Step 2: choose storage -->
             <DockPanel Visibility="{Binding IsChooseStorageStep, Converter={StaticResource BoolToVis}}">
@@ -217,6 +238,11 @@
                         Background="#3D3D3D"
                         Margin="0,0,8,0"
                         Command="{Binding CancelCommand}" />
+                <Button Content="Next"
+                        Style="{StaticResource DarkButton}"
+                        Background="#545454"
+                        Command="{Binding NextFromSourceCommand}"
+                        Visibility="{Binding IsSelectSourceStep, Converter={StaticResource BoolToVis}}" />
                 <Button Content="Next"
                         Style="{StaticResource DarkButton}"
                         Background="#545454"

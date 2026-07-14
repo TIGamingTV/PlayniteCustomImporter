@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 using Playnite.SDK;
 using Playnite.SDK.Models;
 
@@ -19,12 +20,82 @@ namespace PlayniteCustomImporter.Import
             "game", "launcher", "launch", "start", "play", "run", "setup", "install", "main"
         };
 
+        // Scene / repacker tags and packaging noise that hurt Playnite's metadata name matching.
+        private static readonly HashSet<string> noiseTokens = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "repack", "multi", "codex", "plaza", "skidrow", "reloaded", "flt", "tenoke", "razor1911",
+            "hoodlum", "empress", "goldberg", "rune", "doge", "prophet", "cpy", "fitgirl", "dodi",
+            "elamigos", "gog", "proper", "incl", "dlc", "update", "crackfix", "readnfo", "x64", "x86",
+            "win64", "win32"
+        };
+
         private readonly IPlayniteAPI api;
 
         public GameImporter(IPlayniteAPI api)
         {
             this.api = api;
         }
+
+        /// <summary>
+        /// Returns the immediate subfolders of <paramref name="root"/> that contain at least one
+        /// <c>.exe</c> file anywhere inside them. Used to show the user only folders that look like
+        /// importable games. The root itself is never returned (importing it would move the whole
+        /// download folder), and inaccessible subfolders are skipped rather than aborting the scan.
+        /// </summary>
+        public static List<string> FindGameFolders(string root)
+        {
+            var result = new List<string>();
+            if (string.IsNullOrWhiteSpace(root) || !Directory.Exists(root))
+            {
+                return result;
+            }
+
+            string[] subDirectories;
+            try
+            {
+                subDirectories = Directory.GetDirectories(root);
+            }
+            catch (Exception ex)
+            {
+                logger.Warn(ex, $"Could not enumerate subfolders of {root}.");
+                return result;
+            }
+
+            foreach (var directory in subDirectories.OrderBy(p => p, StringComparer.OrdinalIgnoreCase))
+            {
+                if (ContainsExecutable(directory))
+                {
+                    result.Add(directory);
+                }
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// True when <paramref name="folder"/> holds at least one <c>.exe</c> at any depth. Enumeration
+        /// is lazy so it stops at the first match, and access errors are treated as "no exe found"
+        /// rather than propagating.
+        /// </summary>
+        private static bool ContainsExecutable(string folder)
+        {
+            try
+            {
+                return Directory.EnumerateFiles(folder, "*.exe", SearchOption.AllDirectories).Any();
+            }
+            catch (Exception)
+            {
+                // Permission issues, symlink loops, etc. Treat the folder as not scannable.
+                return false;
+            }
+        }
+
+        // Executables that are almost never the game itself; used to keep the recursive fallback tidy.
+        private static readonly string[] nonGameExeMarkers =
+        {
+            "unins", "uninstall", "vcredist", "vc_redist", "dxsetup", "directx", "dotnet",
+            "dotnetfx", "redist", "crashreport", "crashhandler", "setup", "install"
+        };
 
         /// <summary>
         /// Returns the .exe files that sit directly inside <paramref name="folder"/> (non-recursive).
@@ -40,6 +111,46 @@ namespace PlayniteCustomImporter.Import
                 .GetFiles(folder, "*.exe", SearchOption.TopDirectoryOnly)
                 .OrderBy(p => p, StringComparer.OrdinalIgnoreCase)
                 .ToList();
+        }
+
+        /// <summary>
+        /// Lists candidate game executables in <paramref name="folder"/>. Top-level exes are preferred;
+        /// when there are none (the game lives in a subfolder), it falls back to a recursive search with
+        /// obvious installers/redistributables filtered out so the user still gets a useful list.
+        /// </summary>
+        public static List<string> FindExecutables(string folder)
+        {
+            var topLevel = FindTopLevelExes(folder);
+            if (topLevel.Count > 0)
+            {
+                return topLevel;
+            }
+
+            if (string.IsNullOrEmpty(folder) || !Directory.Exists(folder))
+            {
+                return topLevel;
+            }
+
+            try
+            {
+                return Directory
+                    .EnumerateFiles(folder, "*.exe", SearchOption.AllDirectories)
+                    .Where(p => !IsLikelyNonGameExe(p))
+                    .OrderBy(p => p, StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+            }
+            catch (Exception ex)
+            {
+                logger.Warn(ex, $"Recursive executable search failed under {folder}.");
+                return topLevel;
+            }
+        }
+
+        private static bool IsLikelyNonGameExe(string exePath)
+        {
+            var fileName = Path.GetFileNameWithoutExtension(exePath);
+            return nonGameExeMarkers.Any(marker =>
+                fileName.IndexOf(marker, StringComparison.OrdinalIgnoreCase) >= 0);
         }
 
         /// <summary>
@@ -128,6 +239,16 @@ namespace PlayniteCustomImporter.Import
             }
 
             var installDir = Path.GetDirectoryName(exePath);
+
+            // Avoid importing the same executable twice: Playnite happily stores duplicate games, so a
+            // second import of the same exe silently creates a second library entry.
+            var existing = FindExistingGameByExe(exePath);
+            if (existing != null)
+            {
+                throw new InvalidOperationException(
+                    $"\"{existing.Name}\" already points at this executable and is already in your library.");
+            }
+
             var name = BuildGameName(exePath, installDir);
 
             var game = new Game(name)
@@ -152,21 +273,98 @@ namespace PlayniteCustomImporter.Import
             return game;
         }
 
+        /// <summary>
+        /// Finds an already-imported game whose play action launches <paramref name="exePath"/>, or
+        /// null when none exists. Comparison is case-insensitive on the full path.
+        /// </summary>
+        private Game FindExistingGameByExe(string exePath)
+        {
+            var normalised = Path.GetFullPath(exePath);
+
+            return api.Database.Games.FirstOrDefault(g =>
+                g.GameActions != null &&
+                g.GameActions.Any(a =>
+                    a.Type == GameActionType.File &&
+                    !string.IsNullOrEmpty(a.Path) &&
+                    PathsEqual(a.Path, normalised)));
+        }
+
+        private static bool PathsEqual(string a, string b)
+        {
+            try
+            {
+                return string.Equals(Path.GetFullPath(a), b, StringComparison.OrdinalIgnoreCase);
+            }
+            catch (Exception)
+            {
+                // Stored action paths can contain variables like {InstallDir}; a plain compare is enough.
+                return string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
+            }
+        }
+
+        /// <summary>
+        /// Derives a display name for the game, preferring the containing folder when the exe name is
+        /// generic (game.exe, launcher.exe...). The chosen name is cleaned of scene/repacker tags and
+        /// separators so Playnite's metadata search has the best chance of matching.
+        /// </summary>
         private static string BuildGameName(string exePath, string installDir)
         {
             var exeName = Path.GetFileNameWithoutExtension(exePath);
 
-            // Prefer the containing folder name when the exe name is generic (game.exe, launcher.exe...).
+            var rawName = exeName;
             if (!string.IsNullOrEmpty(installDir) && genericExeNames.Contains(exeName))
             {
                 var folderName = new DirectoryInfo(installDir).Name;
                 if (!string.IsNullOrWhiteSpace(folderName))
                 {
-                    return folderName;
+                    rawName = folderName;
                 }
             }
 
-            return exeName;
+            var cleaned = CleanGameName(rawName);
+            // If cleaning stripped everything (e.g. the name was only tags), fall back to the raw value
+            // so the game is never added with an empty name.
+            return string.IsNullOrWhiteSpace(cleaned) ? rawName : cleaned;
+        }
+
+        /// <summary>
+        /// Normalises a scene-style folder/exe name into something a metadata provider can match:
+        /// drops bracketed groups, turns dot/underscore/dash separators into spaces, and removes
+        /// version numbers and known release-group / packaging tokens.
+        /// </summary>
+        internal static string CleanGameName(string raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                return string.Empty;
+            }
+
+            // Drop anything from the first bracket onwards, e.g. "Game (2021) [FitGirl Repack]".
+            var name = Regex.Replace(raw, @"[\[(].*$", string.Empty);
+
+            // Common separators in scene releases -> spaces.
+            name = name.Replace('_', ' ').Replace('.', ' ').Replace('-', ' ');
+
+            var kept = name
+                .Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries)
+                .Where(token => !noiseTokens.Contains(token) && !IsVersionToken(token))
+                .ToList();
+
+            return string.Join(" ", kept).Trim();
+        }
+
+        /// <summary>
+        /// True for tokens that look like a version or build marker (v1, v1.2.3, 2021, build) rather
+        /// than part of the title.
+        /// </summary>
+        private static bool IsVersionToken(string token)
+        {
+            if (string.Equals(token, "build", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            return Regex.IsMatch(token, @"^v?\d+(\.\d+)+$", RegexOptions.IgnoreCase);
         }
 
         /// <summary>
