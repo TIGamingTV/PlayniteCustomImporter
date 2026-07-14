@@ -37,9 +37,21 @@ finish it, the extension will have:
 
 ## Install
 
-### Option 1 — Install the `.pext` file (recommended)
+### Option 1 — From Playnite's add-on browser (once listed)
 
-This is the easiest way and works for everyone.
+If the extension is available in Playnite's built-in database, this is the easiest route and gives you
+automatic updates:
+
+1. In Playnite, open **Add-ons → Browse**.
+2. Search for **Custom Importer** and click **Install**.
+3. **Restart Playnite** when prompted.
+
+> Not listed yet? Use one of the options below. Contributors: see [`PUBLISHING.md`](PUBLISHING.md) for
+> how the add-on is submitted to the Playnite add-on database.
+
+### Option 2 — Install the `.pext` file
+
+Works for everyone, and the way to go before the add-on is listed in Playnite's browser.
 
 1. Go to the [**Releases** page](../../releases) and download the latest
    `PlayniteCustomImporter.pext`.
@@ -52,7 +64,7 @@ That's it. You'll see a **+** button on the left sidebar.
 > No release yet? You can also grab the `.pext` from the **Actions** tab: open the most recent
 > successful build and download the `PlayniteCustomImporter-pext` artifact.
 
-### Option 2 — Manual copy (fallback)
+### Option 3 — Manual copy (fallback)
 
 If the `.pext` won't install for some reason, copy the files in by hand:
 

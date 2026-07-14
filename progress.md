@@ -31,10 +31,15 @@ game folder from the sidebar.
 - [x] CI (`build.yml`): restore + build on Windows, package `.pext`, publish a Release on `v*` tags.
 - [x] Reworked user-friendly README with install + usage guide.
 - [x] Added `CLAUDE.md` (contributor/AI guidance) and this `progress.md`.
+- [x] Playnite add-on database manifests: `installer.yaml` (installer manifest) +
+      `addon-manifests/<AddonId>.yaml` (add-on manifest for submission). CI stamps `installer.yaml`
+      per release and attaches it to the Release; `PUBLISHING.md` documents the submission flow.
 
 ## Ideas / possible next steps
 
-- [ ] Publish a tagged release so users have a `.pext` to download directly.
+- [ ] Publish a tagged release so users have a `.pext` to download directly (and so the
+      `installer.yaml` release asset exists for the add-on database submission — see `PUBLISHING.md`).
+- [ ] Submit the add-on manifest to the Playnite add-on database (fork + PR) once a release is cut.
 - [ ] Automated tests for `GameImporter` (name cleaning, move/cleanup, duplicate detection).
 - [ ] Batch import (queue multiple downloaded folders in one pass).
 - [ ] Smarter game-`.exe` heuristics (e.g. rank by folder depth / file size).
