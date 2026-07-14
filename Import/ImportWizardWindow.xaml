@@ -113,13 +113,13 @@
                     <Setter Property="Text" Value="" />
                     <Style.Triggers>
                         <DataTrigger Binding="{Binding IsSelectSourceStep}" Value="True">
-                            <Setter Property="Text" Value="Step 1 of 3 — Select the game folder" />
-                        </DataTrigger>
-                        <DataTrigger Binding="{Binding IsChooseStorageStep}" Value="True">
-                            <Setter Property="Text" Value="Step 2 of 3 — Choose a storage location" />
+                            <Setter Property="Text" Value="Step 1 of 3 — Select the downloaded folder" />
                         </DataTrigger>
                         <DataTrigger Binding="{Binding IsPickExecutableStep}" Value="True">
-                            <Setter Property="Text" Value="Step 3 of 3 — Pick the executable" />
+                            <Setter Property="Text" Value="Step 2 of 3 — Pick the game executable" />
+                        </DataTrigger>
+                        <DataTrigger Binding="{Binding IsChooseStorageStep}" Value="True">
+                            <Setter Property="Text" Value="Step 3 of 3 — Choose a storage location" />
                         </DataTrigger>
                     </Style.Triggers>
                 </Style>
@@ -168,17 +168,17 @@
                          DisplayMemberPath="Name" />
             </DockPanel>
 
-            <!-- Step 2: choose storage -->
+            <!-- Step 3: choose storage -->
             <DockPanel Visibility="{Binding IsChooseStorageStep, Converter={StaticResource BoolToVis}}">
                 <TextBlock DockPanel.Dock="Top"
-                           Text="Select where the folder should be moved. Manage these locations in the plugin settings."
+                           Text="Choose where the game folder is moved. Only the folder containing the selected executable is kept — the rest of the download is sent to the Recycle Bin. Manage locations in the plugin settings."
                            TextWrapping="Wrap"
                            Margin="0,0,0,8" />
                 <TextBlock DockPanel.Dock="Bottom"
                            Margin="0,8,0,0"
                            Foreground="#9A9A9A"
                            TextWrapping="Wrap"
-                           Text="{Binding SelectedSourceFolder, StringFormat=Folder to move: {0}}" />
+                           Text="{Binding SelectedExecutable.DisplayPath, StringFormat=Game executable: {0}}" />
                 <ListBox ItemsSource="{Binding StorageLocations}"
                          SelectedItem="{Binding SelectedStorage}"
                          HorizontalContentAlignment="Stretch">
@@ -204,7 +204,7 @@
                 </ListBox>
             </DockPanel>
 
-            <!-- Step 3: pick executable -->
+            <!-- Step 2: pick executable -->
             <DockPanel Visibility="{Binding IsPickExecutableStep, Converter={StaticResource BoolToVis}}">
                 <TextBlock DockPanel.Dock="Top"
                            Text="{Binding StatusMessage}"
@@ -219,7 +219,7 @@
                         Command="{Binding BrowseExeCommand}" />
                 <ListBox ItemsSource="{Binding FoundExecutables}"
                          SelectedItem="{Binding SelectedExecutable}"
-                         DisplayMemberPath="FileName" />
+                         DisplayMemberPath="DisplayPath" />
             </DockPanel>
         </Grid>
 
@@ -227,10 +227,19 @@
         <DockPanel Grid.Row="2" Margin="0,16,0,0">
             <Button DockPanel.Dock="Left"
                     Content="Back"
-                    Style="{StaticResource DarkButton}"
-                    Background="#333333"
-                    Command="{Binding BackCommand}"
-                    Visibility="{Binding IsChooseStorageStep, Converter={StaticResource BoolToVis}}" />
+                    Command="{Binding BackCommand}">
+                <Button.Style>
+                    <Style TargetType="Button" BasedOn="{StaticResource DarkButton}">
+                        <Setter Property="Background" Value="#333333" />
+                        <Setter Property="Visibility" Value="Visible" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsSelectSourceStep}" Value="True">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Button.Style>
+            </Button>
             <StackPanel Orientation="Horizontal"
                         HorizontalAlignment="Right">
                 <Button Content="Cancel"
@@ -246,14 +255,14 @@
                 <Button Content="Next"
                         Style="{StaticResource DarkButton}"
                         Background="#545454"
-                        Command="{Binding MoveAndNextCommand}"
-                        Visibility="{Binding IsChooseStorageStep, Converter={StaticResource BoolToVis}}" />
-                <Button Content="Add to Playnite"
+                        Command="{Binding PickExeNextCommand}"
+                        Visibility="{Binding IsPickExecutableStep, Converter={StaticResource BoolToVis}}" />
+                <Button Content="Import Game"
                         Style="{StaticResource DarkButton}"
                         Background="#6A6A6A"
                         MinWidth="120"
-                        Command="{Binding AddGameCommand}"
-                        Visibility="{Binding IsPickExecutableStep, Converter={StaticResource BoolToVis}}" />
+                        Command="{Binding FinishCommand}"
+                        Visibility="{Binding IsChooseStorageStep, Converter={StaticResource BoolToVis}}" />
             </StackPanel>
         </DockPanel>
     </Grid>
