@@ -1,7 +1,6 @@
 # Playnite Custom Importer
 
-> A [Playnite](https://playnite.link/) extension that turns a downloaded game folder into a
-> ready-to-play library entry in a few clicks.
+A [Playnite](https://playnite.link/) extension that turns a downloaded game folder into a ready-to-play library entry in a few clicks.
 
 Downloaded a game as a folder (from an archive, a store, a backup drive…) and want it in your
 Playnite library **without** the usual manual dance of moving files, creating the entry, pointing it
